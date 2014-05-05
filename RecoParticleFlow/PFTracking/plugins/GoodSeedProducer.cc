@@ -161,6 +161,8 @@ GoodSeedProducer::produce(Event& iEvent, const EventSetup& iSetup)
   edm::ValueMap<reco::PreIdRef>::Filler mapFiller(*preIdMap_p);
 
   //Tracking Tools
+
+  // SACHIKO: HERE WAS CHANGED FROM MY MODIFIED CODE
   if(!disablePreId_)
     {
       edm::ESHandle<TrajectoryFitter> aFitter;
@@ -169,14 +171,14 @@ GoodSeedProducer::produce(Event& iEvent, const EventSetup& iSetup)
       iSetup.get<TrajectoryFitter::Record>().get(smootherName_, aSmoother);
       smoother_.reset(aSmoother->clone());
       fitter_ = aFitter->clone();
-     /// FIXME FIXME CLONE
+      /// FIXME FIXME CLONE
       edm::ESHandle<TransientTrackingRecHitBuilder> theTrackerRecHitBuilder;
       try {
-        std::string theTrackerRecHitBuilderName("WithAngleAndTemplate");  // FIXME FIXME
-        iSetup.get<TransientRecHitRecord>().get(theTrackerRecHitBuilderName,theTrackerRecHitBuilder);
+	std::string theTrackerRecHitBuilderName("WithAngleAndTemplate");  // FIXME FIXME
+	iSetup.get<TransientRecHitRecord>().get(theTrackerRecHitBuilderName,theTrackerRecHitBuilder);
       } catch(...) {
-        std::string theTrackerRecHitBuilderName("hltESPTTRHBWithTrackAngle");  // FIXME FIXME
-        iSetup.get<TransientRecHitRecord>().get(theTrackerRecHitBuilderName,theTrackerRecHitBuilder);
+	std::string theTrackerRecHitBuilderName("hltESPTTRHBWithTrackAngle");  // FIXME FIXME
+	iSetup.get<TransientRecHitRecord>().get(theTrackerRecHitBuilderName,theTrackerRecHitBuilder);
       }
       hitCloner = static_cast<TkTransientTrackingRecHitBuilder const *>(theTrackerRecHitBuilder.product())->cloner();
       fitter_->setHitCloner(&hitCloner);
@@ -192,7 +194,7 @@ GoodSeedProducer::produce(Event& iEvent, const EventSetup& iSetup)
   iEvent.getByToken(pfCLusTagECLabel_,theECPfClustCollection);
   
 
- vector<PFCluster const *> basClus;
+  vector<PFCluster const *> basClus;
   for ( auto const & klus : *theECPfClustCollection.product() ) {
     if(klus.correctedEnergy()>clusThreshold_) basClus.push_back(&klus);
   }
@@ -242,7 +244,8 @@ GoodSeedProducer::produce(Event& iEvent, const EventSetup& iSetup)
 	  int ibin=ipteta*9;
 	  
 	  float oPTOB=1.f/Tj[i].lastMeasurement().updatedState().globalMomentum().mag();
-	  float chikfred=Tk[i].normalizedChi2();
+	  float nchi=Tk[i].normalizedChi2();
+	  //	  float chikfred=Tk[i].normalizedChi2();
 	  int nhitpi=Tj[i].foundHits();
 	  float EP=0;
       
@@ -263,7 +266,7 @@ GoodSeedProducer::produce(Event& iEvent, const EventSetup& iSetup)
 						      0.);
 
 	  BaseParticlePropagator theOutParticle( RawParticle(mom,pos),
-				    0,0,B_.z());
+						 0,0,B_.z());
 	  theOutParticle.setCharge(Tk[i].charge());
       
 	  theOutParticle.propagateToEcalEntrance(false);
@@ -280,9 +283,9 @@ GoodSeedProducer::produce(Event& iEvent, const EventSetup& iSetup)
 	  PFClusterRef clusterRef;
 	  math::XYZPoint meanShowerSaved;
 	  if(theOutParticle.getSuccess()!=0){
-	     ElecTrkEcalPos=GlobalPoint(theOutParticle.vertex().x(),
-			       	        theOutParticle.vertex().y(),
-					theOutParticle.vertex().z()
+	    ElecTrkEcalPos=GlobalPoint(theOutParticle.vertex().x(),
+				       theOutParticle.vertex().y(),
+				       theOutParticle.vertex().z()
                                        );
 
             constexpr float psLim = std::sinh(1.65f);
@@ -294,7 +297,8 @@ GoodSeedProducer::produce(Event& iEvent, const EventSetup& iSetup)
 	    for(auto aClus : basClus) {
 
 	      float tmp_ep=float(aClus->correctedEnergy())*oPTOB;
-              if ((tmp_ep<minEp_)|(tmp_ep>maxEp_)) { ++clusCounter; continue;}
+              if ((tmp_ep<minEp_)||(tmp_ep>maxEp_)) { ++clusCounter; continue;}
+	      //              if ((tmp_ep<minEp_)|(tmp_ep>maxEp_)) { ++clusCounter; continue;}
 	    
 	      double ecalShowerDepth
 		= PFCluster::getDepthCorrection(aClus->correctedEnergy(),
@@ -310,16 +314,18 @@ GoodSeedProducer::produce(Event& iEvent, const EventSetup& iSetup)
 
 	      float tmp_phi=std::abs(aClus->positionREP().phi()-phirec);
 	      if (tmp_phi>float(TMath::Pi())) tmp_phi-= float(TMath::TwoPi());
-	      
-	      float tmp_dr=std::sqrt(std::pow(tmp_phi,2.f)+
-				std::pow(aClus->positionREP().eta()-etarec,2.f));
+	      float tmp_eta=aClus->positionREP().eta()-etarec;
+	      float tmp_dr=sqrt(tmp_phi*tmp_phi + tmp_eta*tmp_eta);	      
+
+	      //	      float tmp_dr=std::sqrt(std::pow(tmp_phi,2.f)+
+	      //		     std::pow(aClus->positionREP().eta()-etarec,2.f));
 	  
 	      if (tmp_dr<dr){
 		dr=tmp_dr;
 		if(dr < Min_dr_){ // find the most closest and energetic ECAL cluster
 		  if(aClus->correctedEnergy() > max_ee){
 
-		    toteta=aClus->positionREP().eta()-etarec;
+		    toteta=tmp_eta;
 		    totphi=tmp_phi;
 		    EP=tmp_ep;
 		    EE=aClus->correctedEnergy();
@@ -371,8 +377,10 @@ GoodSeedProducer::produce(Event& iEvent, const EventSetup& iSetup)
 	  //KF FILTERING FOR UNMATCHED EVENTS
 	  int hit1max=int(thr[ibin+3]);
 	  float chiredmin=thr[ibin+4];
+	  // 	  bool GoodKFFiltering =
+	  // 	    ((chikfred>chiredmin) | (nhitpi<hit1max));
 	  bool GoodKFFiltering =
-	    ((chikfred>chiredmin) | (nhitpi<hit1max));
+	    ((nchi>chiredmin) || (nhitpi<hit1max));
       
 
 	  myPreId.setTrackFiltering(GoodKFFiltering);
@@ -384,7 +392,7 @@ GoodSeedProducer::produce(Event& iEvent, const EventSetup& iSetup)
 	    chiRatio=1000;
 	    dpt=0;
 	    nhit=nhitpi;
-	    //	    chikfred = nchi;
+	    chikfred = nchi;
 	    trk_ecalDeta = trk_ecalDeta_;
 	    trk_ecalDphi = trk_ecalDphi_;
       
@@ -393,23 +401,23 @@ GoodSeedProducer::produce(Event& iEvent, const EventSetup& iSetup)
 	    for (int ih=hits.size()-1; ih>=0; ih--)  tmp.push_back(hits[ih]);
 	    Trajectory  && FitTjs= fitter_->fitOne(Seed,tmp,Tj[i].lastMeasurement().updatedState());
 	
-	      if(FitTjs.isValid()){
-		Trajectory && SmooTjs= smoother_->trajectory(FitTjs);
-		  if(SmooTjs.isValid()){
+	    if(FitTjs.isValid()){
+	      Trajectory && SmooTjs= smoother_->trajectory(FitTjs);
+	      if(SmooTjs.isValid()){
 		
-		    //Track refitted with electron hypothesis
+		//Track refitted with electron hypothesis
 		
-		    float pt_out=SmooTjs.firstMeasurement().
-		      updatedState().globalMomentum().perp();
-		    float pt_in=SmooTjs.lastMeasurement().
-		      updatedState().globalMomentum().perp();
-		    dpt=(pt_in>0) ? fabs(pt_out-pt_in)/pt_in : 0.;
-		    // the following is simply the number of degrees of freedom
-		    chiRatio=SmooTjs.chiSquared()/Tj[i].chiSquared();
-		    chired=chiRatio*chikfred;
+		float pt_out=SmooTjs.firstMeasurement().
+		  updatedState().globalMomentum().perp();
+		float pt_in=SmooTjs.lastMeasurement().
+		  updatedState().globalMomentum().perp();
+		dpt=(pt_in>0) ? fabs(pt_out-pt_in)/pt_in : 0.;
+		// the following is simply the number of degrees of freedom
+		chiRatio=SmooTjs.chiSquared()/Tj[i].chiSquared();
+		chired=chiRatio*chikfred;
 
-		  }
-		}
+	      }
+	    }
 	     
 	
 	    //TMVA Analysis
@@ -436,7 +444,8 @@ GoodSeedProducer::produce(Event& iEvent, const EventSetup& iSetup)
 	    }
 	  }
     
-	  GoodPreId= GoodTkId | GoodMatching; 
+	  GoodPreId= (GoodTkId || GoodMatching); 
+	  //	  GoodPreId= GoodTkId | GoodMatching; 
 
 	  myPreId.setFinalDecision(GoodPreId);
       
